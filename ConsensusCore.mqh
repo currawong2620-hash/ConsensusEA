@@ -25,15 +25,6 @@ enum ENUM_CombinationMethod
 };
 
 //==============================================================
-//  Базовые калиброванные веса (XAUUSD, M5)
-//==============================================================
-#define BASE_WEIGHT_RSI      0.48
-#define BASE_WEIGHT_ADX      0.86
-#define BASE_WEIGHT_ATR      0.87
-#define BASE_WEIGHT_OBV      0.83
-#define BASE_WEIGHT_STDDEV   0.88
-
-//==============================================================
 //  Структуры данных
 //==============================================================
 struct ConsensusSet
@@ -66,36 +57,43 @@ ConsensusSet BuildConsensusSet(double rsi,double adx,double atr,double obv,doubl
    return set;
 }
 
+// Глобальные веса (с дефолтными значениями, перезаписываются в EA)
+double gWeightRSI    = 0.48;
+double gWeightADX    = 0.86;
+double gWeightATR    = 0.87;
+double gWeightOBV    = 0.83;
+double gWeightSTDDEV = 0.88;
+
 //==============================================================
-//  Расчёт консенсуса с использованием базовых весов
+//  Расчёт консенсуса с использованием весов
 //==============================================================
 void ConsensusCompute(ConsensusSet &set)
 {
-   // 5 голосов: мы трактуем rsi/adx/atr/obv/stddev как уже нормализованные (-1..+1)
-   double v[5];
-   v[0] = set.rsi;
-   v[1] = set.adx;
-   v[2] = set.atr;
-   v[3] = set.obv;
-   v[4] = set.stddev;
-
-   // среднее значение (это и есть консенсус)
-   double mean = 0.0;
+   double v[5] = {set.rsi, set.adx, set.atr, set.obv, set.stddev};
+   double w[5] = {gWeightRSI, gWeightADX, gWeightATR, gWeightOBV, gWeightSTDDEV};
+   
+   double weighted_sum = 0.0;
+   double total_weight = 0.0;
+   
    for(int i = 0; i < 5; i++)
-      mean += v[i];
-   mean /= 5.0;
-
-   // дисперсия
+   {
+      weighted_sum += v[i] * w[i];
+      total_weight += w[i];
+   }
+   
+   double mean = total_weight > 0 ? weighted_sum / total_weight : 0.0;
+   
+   // Взвешенная дисперсия
    double var = 0.0;
    for(int i = 0; i < 5; i++)
-      var += MathPow(v[i] - mean, 2);
-   var /= 5.0;
-
+      var += w[i] * MathPow(v[i] - mean, 2);
+   var = total_weight > 0 ? var / total_weight : 0.0;
+   
    double disp = MathSqrt(var);
-
-   set.consensus  = mean;          // [-1..+1]
-   set.confidence = 1.0 - disp;    // 1 → полное согласие, 0 → полный раздрай
-
+   
+   set.consensus  = mean;
+   set.confidence = 1.0 - disp;
+   
    if(set.confidence < 0.0) set.confidence = 0.0;
    if(set.confidence > 1.0) set.confidence = 1.0;
 }

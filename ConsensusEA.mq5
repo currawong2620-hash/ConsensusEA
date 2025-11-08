@@ -53,6 +53,13 @@ input double Inp_TrailingStopPoints = 50.0;        // Trailing stop in points
 input double Inp_DefaultSLPoints = 50.0;           // Default SL in points
 input double Inp_DefaultTPPoints = 100.0;          // Default TP in points
 
+//---- Веса индикаторов (тюнинговые) ---------------------------------
+input string _SECTION6 = "---- Indicators Weights (v3.0) ----";
+input double Inp_Weight_RSI    = 0.48;  // RSI
+input double Inp_Weight_ADX    = 0.86;  // ADX
+input double Inp_Weight_ATR    = 0.87;  // ATR
+input double Inp_Weight_OBV    = 0.83;  // OBV
+input double Inp_Weight_STDDEV = 0.88;  // StdDev
 //---------------------------------------------------------------
 // Глобальные данные
 //---------------------------------------------------------------
@@ -73,7 +80,20 @@ int OnInit()
    Print("OnInit: initializing ConsensusEA...");
 
    PanelCreate(Inp_PanelX, Inp_PanelY, Inp_PanelW, Inp_PanelH, Inp_FontSize);
-
+   
+   gWeightRSI    = Inp_Weight_RSI;
+   gWeightADX    = Inp_Weight_ADX;
+   gWeightATR    = Inp_Weight_ATR;
+   gWeightOBV    = Inp_Weight_OBV;
+   gWeightSTDDEV = Inp_Weight_STDDEV;
+   
+   // Защита от идиота (если кто-то поставит нули)
+   if(gWeightRSI    <= 0) gWeightRSI    = 0.01;
+   if(gWeightADX    <= 0) gWeightADX    = 0.01;
+   if(gWeightATR    <= 0) gWeightATR    = 0.01;
+   if(gWeightOBV    <= 0) gWeightOBV    = 0.01;
+   if(gWeightSTDDEV <= 0) gWeightSTDDEV = 0.01;
+   
    // пробуем определить, идут ли живые тики
    datetime t0 = TimeCurrent();
    Sleep(1500);
@@ -162,16 +182,17 @@ void OnTick()
    // выводим, если сигнал изменился или прошло >=5 секунд
    if(signal != prevSignal || TimeCurrent() - lastPrintTime >= 5)
    {
-      /*PrintFormat("Signal=%s | W.cons=%.2f (%.2f) | S.cons=%.2f (%.2f) | TFs: %d/%d",
-         sigText,
-         gWorkSet.consensus,  gWorkSet.confidence,
-         gSeniorSet.consensus,gSeniorSet.confidence,
-         (int)Inp_WorkTF, (int)Inp_SeniorTF);*/
-   
+      PrintFormat("Signal=%s | W.cons=%.2f(c%.2f) S.cons=%.2f(c%.2f) | "
+            "W:RSI%.2f ADX%.2f ATR%.2f OBV%.2f STD%.2f",
+            sigText,
+            gWorkSet.consensus,  gWorkSet.confidence,
+            gSeniorSet.consensus,gSeniorSet.confidence,
+            gWeightRSI, gWeightADX, gWeightATR, gWeightOBV, gWeightSTDDEV);
+     
       prevSignal    = signal;
       lastPrintTime = TimeCurrent();
    }
-
+   
 }
 
 //---------------------------------------------------------------
