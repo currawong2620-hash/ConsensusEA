@@ -186,9 +186,76 @@ void UpdateDailyBalance()
      }
   }
 
-bool CheckEquityStop() { /* без изменений — как в v3.63 */ }
-bool IsTradingAllowed() { /* без изменений */ }
-double GetAdaptiveThreshold() { /* без изменений */ }
+//---------------------------------------------------------------
+// Проверка Equity Stop
+//---------------------------------------------------------------
+bool CheckEquityStop()
+{
+   if(!Inp_UseEquityStop || g_TradingStoppedToday) return false;
+  
+   double current = AccountInfoDouble(ACCOUNT_EQUITY);
+   double limit = g_DailyStartBalance * (1.0 - Inp_EquityStopPercent / 100.0);
+  
+   if(current <= limit)
+   {
+      PrintFormat("EQUITY STOP TRIGGERED! %.2f < %.2f (%.1f%% loss from yesterday's close)", 
+                  current, limit, Inp_EquityStopPercent);
+  
+      TradeCloseAll("EQUITY_STOP");
+      g_TradingStoppedToday = true;
+      
+      if(Inp_EquityStopCooldown == 0)
+         g_StopTradingUntil = GetNextSydneyOpen();
+      else
+         g_StopTradingUntil = TimeCurrent() + Inp_EquityStopCooldown * 60;
+  
+      Comment("TRADING STOPPED: Equity drawdown > ", 
+              DoubleToString(Inp_EquityStopPercent,1), "% from yesterday\n",
+              "Resume: ", TimeToString(g_StopTradingUntil, TIME_DATE|TIME_MINUTES));
+      return true;
+   }
+   return false;
+}
+
+//---------------------------------------------------------------
+// Разрешение на торговлю
+//---------------------------------------------------------------
+bool IsTradingAllowed()
+{
+   if(g_TradingStoppedToday && TimeCurrent() < g_StopTradingUntil)
+      return false;
+   if(g_TradingStoppedToday && TimeCurrent() >= g_StopTradingUntil)
+   {
+      g_TradingStoppedToday = false;
+      Print("Equity Stop lifted. Trading resumed — market problems? What problems?");
+      Comment("");
+   }
+   return true;
+}
+
+//---------------------------------------------------------------
+// Получить текущий порог консенсуса (адаптивный)
+//---------------------------------------------------------------
+double GetAdaptiveThreshold()
+{
+   if(!Inp_AdaptiveThreshold) return Inp_Threshold;
+  
+   int hADX = iADX(_Symbol, Inp_SeniorTF, 14);
+   if(hADX < 0) return Inp_Threshold;
+  
+   double adxBuf[1];
+   if(CopyBuffer(hADX, 0, 0, 1, adxBuf) < 1)
+   {
+      IndicatorRelease(hADX);
+      return Inp_Threshold;
+   }
+   double adxValue = adxBuf[0];
+   IndicatorRelease(hADX);
+  
+   if(adxValue < 15) return Inp_Threshold_Flat;
+   if(adxValue > 25) return Inp_Threshold_Strong;
+   return Inp_Threshold_Base;
+}
 
 //+------------------------------------------------------------------+
 //| OnTick — только GA-блок                                          |
