@@ -3,7 +3,7 @@
 //| Связка: Analyzer → Core → Combiner → Panel + Trade Module        |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "3.15"  // Бампнул для Sydney cooldown
+#property version   "3.41"  // Для periodic recalc
 #property copyright "Consensus"
 
 //---------------------------------------------------------------
@@ -69,6 +69,13 @@ input string _SECTION9 = "---- Daily Equity Stop ----";
 input bool   Inp_UseEquityStop        = true;     // Включить защиту по equity
 input double Inp_EquityStopPercent    = 3.0;      // % от вчерашнего закрытия → стоп на день
 input int    Inp_EquityStopCooldown   = 0;        // Минут до следующей торговли (0 = до Sydney open)
+// ---- Correlation-Based Base Weights (v3.4+) ----
+input string _SECTION12 = "---- Correlation-Based Base Weights (v3.4+) ----";
+input bool Inp_UseCorrelationWeights = true;  // Пересчитывать веса при запуске
+input int Inp_BarsForCorrelation = 2000;  // Бар для корреляции (до 10000)
+// ---- Periodic Recalc (v3.4.1+) ----
+input string _SECTION13 = "---- Periodic Recalc Settings ----";
+input int Inp_RecalcEveryXBars = 2000;  // Пересчитывать каждые X баров (0 = отключено)
 
 //---------------------------------------------------------------
 // Глобальные данные
@@ -101,20 +108,31 @@ static ENUM_TradeSignal prevPanelSignal = SIGNAL_NONE;
 static ENUM_TradeSignal prevSignal = SIGNAL_NONE;
 static datetime lastPrintTime = 0;
 
+// --- Для periodic recalc ---
+static int g_BarCount = 0;
+
 //---------------------------------------------------------------
 // Инициализация
 //---------------------------------------------------------------
 int OnInit()
 {
-   Print("OnInit: initializing ConsensusEA v3.1.5 — Sydney Cooldown Mode, because if cooldown=0, let's wait for kangaroos to wake up.");
+   Print("OnInit: initializing ConsensusEA v3.4.1 — Correlation recalc every X bars, because market changes, and so should our weights — like office coffee, always fresh or die.");
 
    PanelCreate(Inp_PanelX, Inp_PanelY, Inp_PanelW, Inp_PanelH, Inp_FontSize);
   
-   gWeightRSI = Inp_Weight_RSI;
-   gWeightADX = Inp_Weight_ADX;
-   gWeightATR = Inp_Weight_ATR;
-   gWeightOBV = Inp_Weight_OBV;
-   gWeightSTDDEV = Inp_Weight_STDDEV;
+   // Пересчёт весов при запуске, если включено
+   if(Inp_UseCorrelationWeights)
+   {
+      InitCorrelationWeights(Inp_WorkTF, Inp_BarsForCorrelation);
+   }
+   else
+   {
+      gWeightRSI = Inp_Weight_RSI;
+      gWeightADX = Inp_Weight_ADX;
+      gWeightATR = Inp_Weight_ATR;
+      gWeightOBV = Inp_Weight_OBV;
+      gWeightSTDDEV = Inp_Weight_STDDEV;
+   }
   
    // Защита от идиота (если кто-то поставит нули)
    if(gWeightRSI <= 0) gWeightRSI = 0.01;
@@ -207,7 +225,7 @@ bool CheckEquityStop()
    if(!Inp_UseEquityStop || g_TradingStoppedToday) return false;
   
    double current = AccountInfoDouble(ACCOUNT_EQUITY);
-   double limit   = g_DailyStartBalance * (1.0 - Inp_EquityStopPercent / 100.0);
+   double limit = g_DailyStartBalance * (1.0 - Inp_EquityStopPercent / 100.0);
   
    if(current <= limit)
    {

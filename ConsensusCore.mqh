@@ -5,12 +5,8 @@
 //+------------------------------------------------------------------+
 #property strict
 
-// Глобальные веса (extern на топ-левеле для правильной декларации)
-extern double gWeightRSI;
-extern double gWeightADX;
-extern double gWeightATR;
-extern double gWeightOBV;
-extern double gWeightSTDDEV;
+#ifndef __CONSENSUS_CORE_MQH__
+#define __CONSENSUS_CORE_MQH__
 
 //==============================================================
 //  ENUM: торговые сигналы и методы комбинирования
@@ -65,11 +61,11 @@ ConsensusSet BuildConsensusSet(double rsi,double adx,double atr,double obv,doubl
 }
 
 //==============================================================
-//  Расчёт консенсуса с использованием весов (extern убраны из функции)
+//  Расчёт консенсуса с использованием весов (weighted from v3.0)
 //==============================================================
 void ConsensusCompute(ConsensusSet &set)
 {
-   // 5 голосов: мы трактуем rsi/adx/atr/obv/stddev как уже нормализованные (-1..+1)
+   // Глобальные веса из ConsensusEA.mq5
    double v[5];
    v[0] = set.rsi;
    v[1] = set.adx;
@@ -116,3 +112,5 @@ struct ConsensusVotes
       dst = BuildConsensusSet(rsiVote, adxVote, atrVote, obvVote, stddevVote);
    }
 };
+
+#endif // __CONSENSUS_CORE_MQH__
