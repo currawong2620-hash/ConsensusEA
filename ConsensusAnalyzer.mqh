@@ -6,11 +6,11 @@
 #include "ConsensusCore.mqh"
 
 //------------------------------------------------------------
-//  Анализ индикаторов и формирование голосов
+//  Анализ индикаторов и формирование голосов (с optional shift для backtest)
 //------------------------------------------------------------
-bool ConsensusAnalyze(const string sym, ENUM_TIMEFRAMES tf, ConsensusVotes &out)
+bool ConsensusAnalyze(const string sym, ENUM_TIMEFRAMES tf, ConsensusVotes &out, int shift=0)
 {
-   if(Bars(sym, tf) < 100)
+   if(Bars(sym, tf) < 100 + shift)
       return false;
 
    double rsiBuf[3], adxBuf[3], atrBuf[3], obvBuf[3], stdBuf[3];
@@ -24,11 +24,11 @@ bool ConsensusAnalyze(const string sym, ENUM_TIMEFRAMES tf, ConsensusVotes &out)
    if(hRSI < 0 || hADX < 0 || hATR < 0 || hOBV < 0 || hSTD < 0)
       return false;
 
-   if(CopyBuffer(hRSI,0,0,2,rsiBuf) < 2 ||
-      CopyBuffer(hADX,0,0,2,adxBuf) < 2 ||
-      CopyBuffer(hATR,0,0,2,atrBuf) < 2 ||
-      CopyBuffer(hOBV,0,0,2,obvBuf) < 2 ||
-      CopyBuffer(hSTD,0,0,2,stdBuf) < 2)
+   if(CopyBuffer(hRSI,0,shift,2,rsiBuf) < 2 ||
+      CopyBuffer(hADX,0,shift,2,adxBuf) < 2 ||
+      CopyBuffer(hATR,0,shift,2,atrBuf) < 2 ||
+      CopyBuffer(hOBV,0,shift,2,obvBuf) < 2 ||
+      CopyBuffer(hSTD,0,shift,2,stdBuf) < 2)
    {
       IndicatorRelease(hRSI);
       IndicatorRelease(hADX);
@@ -51,7 +51,7 @@ bool ConsensusAnalyze(const string sym, ENUM_TIMEFRAMES tf, ConsensusVotes &out)
    out.stddevVote  = (stdNow > stdPrev ? 1 : -1);
 
    out.consensus = (out.rsiVote + out.adxVote + out.atrVote + out.obvVote + out.stddevVote) / 5.0;
-   out.barTime   = iTime(sym, tf, 0);
+   out.barTime   = iTime(sym, tf, shift);
 
    IndicatorRelease(hRSI);
    IndicatorRelease(hADX);
@@ -61,4 +61,3 @@ bool ConsensusAnalyze(const string sym, ENUM_TIMEFRAMES tf, ConsensusVotes &out)
 
    return true;
 }
-
