@@ -1,10 +1,11 @@
 //+------------------------------------------------------------------+
-//| ConsensusEA.mq5 — основной файл консенсус-советника             |
-//| Связка: Analyzer → Core → Combiner → Panel + Trade Module        |
+//|                                                      ConsensusEA.mq5|
+//|                        Copyright 2025, Consensus Trading Team   |
+//|                                v3.64 — Sydney Monday 11:00 AEDT |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "3.41"  // Для periodic recalc
-#property copyright "Consensus"
+#property version   "3.64"
+#property copyright "Consensus Trading Team — Sydney Edition"
 
 //---------------------------------------------------------------
 // Подключаем модули
@@ -13,209 +14,177 @@
 #include "ConsensusCore.mqh"
 #include "SignalCombiner.mqh"
 #include "PanelConsensus.mqh"
-#include "TradeModule.mqh" // Новый торговый модуль
-#include "WeightUpdater.mqh" // Новый модуль обновления весов (v3.1+)
+#include "TradeModule.mqh"
+#include "WeightUpdater.mqh"
 
 //---------------------------------------------------------------
-// INPUT PARAMETERS
+// INPUT PARAMETERS (продакшн-версия — без тестовых костылей)
 //---------------------------------------------------------------
-// ---- Timeframe Settings ----
 input string _SECTION1 = "---- Timeframe Settings ----";
-input ENUM_TIMEFRAMES Inp_WorkTF = PERIOD_M5; // Working timeframe
-input ENUM_TIMEFRAMES Inp_SeniorTF = PERIOD_H1; // Senior timeframe
-// ---- Combination Method ----
+input ENUM_TIMEFRAMES Inp_WorkTF = PERIOD_M5;
+input ENUM_TIMEFRAMES Inp_SeniorTF = PERIOD_H1;
+
 input string _SECTION2 = "---- Combination Method ----";
-input ENUM_CombinationMethod Inp_Method = COMB_METHOD_FILTER; // Combination method
-input double Inp_Threshold = 0.30; // Consensus threshold
-// ---- Consensus Panel Settings ----
+input ENUM_CombinationMethod Inp_Method = COMB_METHOD_FILTER;
+input double Inp_Threshold = 0.30;
+
 input string _SECTION3 = "---- Consensus Panel Settings ----";
-input int Inp_PanelX = 10; // Panel X offset (pixels)
-input int Inp_PanelY = 20; // Panel Y offset (pixels)
-input int Inp_PanelW = 260; // Panel width (pixels)
-input int Inp_PanelH = 120; // Panel height (pixels)
-input int Inp_FontSize = 9; // Font size (points)
-input ENUM_BASE_CORNER Inp_PanelCorner = CORNER_LEFT_UPPER; // Panel corner
-// ---- Risk Control & Filters ----
+input int    Inp_PanelX = 10;
+input int    Inp_PanelY = 20;
+input int    Inp_PanelW = 260;
+input int    Inp_PanelH = 120;
+input int    Inp_FontSize = 9;
+input ENUM_BASE_CORNER Inp_PanelCorner = CORNER_LEFT_UPPER;
+
 input string _SECTION4 = "---- Risk Control & Filters ----";
-input bool Inp_AvoidTrendEnd = true; // Avoid entries when working TF trend fades
-// ---- Trade Settings ----
+input bool   Inp_AvoidTrendEnd = true;
+
 input string _SECTION5 = "---- Trade Settings ----";
-input double Inp_BaseLot = 0.01; // Base lot size
-input int Inp_MaxAdditionalTrades = 3; // Maximum additional trades
-input double Inp_LotMultiplier = 1.5; // Lot multiplier
-input bool Inp_UseSoftClose = true; // Use soft close (work TF reverse only)
-input bool Inp_UseTrailingStop = false; // Use trailing stop
-input double Inp_TrailingStopPoints = 50.0; // Trailing stop in points
-input double Inp_DefaultSLPoints = 50.0; // Default SL in points
-input double Inp_DefaultTPPoints = 100.0; // Default TP in points
-//---- Веса индикаторов (тюнинговые) ---------------------------------
+input double Inp_BaseLot = 0.01;
+input int    Inp_MaxAdditionalTrades = 3;
+input double Inp_LotMultiplier = 1.5;
+input bool   Inp_UseSoftClose = true;
+input bool   Inp_UseTrailingStop = false;
+input double Inp_TrailingStopPoints = 50.0;
+input double Inp_DefaultSLPoints = 50.0;
+input double Inp_DefaultTPPoints = 100.0;
+
 input string _SECTION6 = "---- Indicators Weights (v3.0) ----";
-input double Inp_Weight_RSI = 0.48; // RSI
-input double Inp_Weight_ADX = 0.86; // ADX
-input double Inp_Weight_ATR = 0.87; // ATR
-input double Inp_Weight_OBV = 0.83; // OBV
-input double Inp_Weight_STDDEV = 0.88; // StdDev
-//---- Метод обновления весов (v3.1+) --------------------------------
-input string _SECTION7 = "---- Weight Update Method (v3.1+) ----";
-input ENUM_WeightUpdateMethod Inp_WeightUpdate = WEIGHT_UPDATE_NONE; // Weight update method
-// ---- Adaptive Consensus Threshold ----
+input double Inp_Weight_RSI     = 0.48;
+input double Inp_Weight_ADX     = 0.86;
+input double Inp_Weight_ATR     = 0.87;
+input double Inp_Weight_OBV     = 0.83;
+input double Inp_Weight_STDDEV  = 0.88;
+
+input string _SECTION7 = "---- Weight Update Method ----";
+input ENUM_WeightUpdateMethod Inp_WeightUpdate = WEIGHT_UPDATE_GENETIC;
+
 input string _SECTION8 = "---- Adaptive Consensus Threshold ----";
-input bool   Inp_AdaptiveThreshold    = true;     // Включить адаптивный порог
-input double Inp_Threshold_Base       = 0.30;     // Базовый порог
-input double Inp_Threshold_Flat       = 0.25;     // Во флэте (ADX < 15)
-input double Inp_Threshold_Strong     = 0.45;     // В сильном тренде (ADX > 25)
-// ---- Daily Equity Stop ----
+input bool   Inp_AdaptiveThreshold = true;
+input double Inp_Threshold_Base    = 0.30;
+input double Inp_Threshold_Flat    = 0.25;
+input double Inp_Threshold_Strong  = 0.45;
+
 input string _SECTION9 = "---- Daily Equity Stop ----";
-input bool   Inp_UseEquityStop        = true;     // Включить защиту по equity
-input double Inp_EquityStopPercent    = 3.0;      // % от вчерашнего закрытия → стоп на день
-input int    Inp_EquityStopCooldown   = 0;        // Минут до следующей торговли (0 = до Sydney open)
-// ---- Correlation-Based Base Weights (v3.4+) ----
-input string _SECTION12 = "---- Correlation-Based Base Weights (v3.4+) ----";
-input bool Inp_UseCorrelationWeights = true;  // Пересчитывать веса при запуске
-input int Inp_BarsForCorrelation = 2000;  // Бар для корреляции (до 10000)
-// ---- Periodic Recalc (v3.4.1+) ----
-input string _SECTION13 = "---- Periodic Recalc Settings ----";
-input int Inp_RecalcEveryXBars = 2000;  // Пересчитывать каждые X баров (0 = отключено)
+input bool   Inp_UseEquityStop = true;
+input double Inp_EquityStopPercent = 3.0;
+input int    Inp_EquityStopCooldown = 0;
+
+input string _SECTION12 = "---- Correlation-Based Base Weights ----";
+input bool   Inp_UseCorrelationWeights = true;
+input int    Inp_BarsForCorrelation = 2000;
 
 //---------------------------------------------------------------
-// Глобальные данные
+// Глобальные переменные
 //---------------------------------------------------------------
-ConsensusVotes gWorkVotes;
-ConsensusVotes gSeniorVotes;
-ConsensusSet   gWorkSet;
-ConsensusSet   gSeniorSet;
-bool           gUseTimer   = false; // true, если работаем через таймер
+ConsensusVotes  gWorkVotes, gSeniorVotes;
+ConsensusSet    gWorkSet,   gSeniorSet;
+bool            gUseTimer = false;
 ENUM_TradeSignal gLastSignal = SIGNAL_NONE;
 
-// Глобальные веса (mutable для динамики)
-double gWeightRSI;
-double gWeightADX;
-double gWeightATR;
-double gWeightOBV;
-double gWeightSTDDEV;
+double gWeightRSI, gWeightADX, gWeightATR, gWeightOBV, gWeightSTDDEV;
 
-// --- Глобальные для Equity Stop ---
-double g_DailyStartBalance = 0.0;
+double   g_DailyStartBalance = 0.0;
 datetime g_LastDayChecked = 0;
 datetime g_StopTradingUntil = 0;
-bool g_TradingStoppedToday = false;
+bool     g_TradingStoppedToday = false;
 
-// --- Для панели (статические, как раньше) ---
 static datetime lastPanelUpdate = 0;
 static ENUM_TradeSignal prevPanelSignal = SIGNAL_NONE;
-
-// --- Для лога ---
 static ENUM_TradeSignal prevSignal = SIGNAL_NONE;
 static datetime lastPrintTime = 0;
 
-// --- Для periodic recalc ---
-static int g_BarCount = 0;
+datetime g_LastGA_Run = 0;   // Когда последний раз запускали GA
 
-//---------------------------------------------------------------
-// Инициализация
-//---------------------------------------------------------------
+//+------------------------------------------------------------------+
+//| Инициализация                                                    |
+//+------------------------------------------------------------------+
 int OnInit()
-{
-   Print("OnInit: initializing ConsensusEA v3.4.1 — Correlation recalc every X bars, because market changes, and so should our weights — like office coffee, always fresh or die.");
+  {
+   Print("ConsensusEA v3.64 — Sydney Monday 11:00 AEDT — LIVE READY");
+   PanelCreate(Inp_PanelX,Inp_PanelY,Inp_PanelW,Inp_PanelH,Inp_FontSize);
 
-   PanelCreate(Inp_PanelX, Inp_PanelY, Inp_PanelW, Inp_PanelH, Inp_FontSize);
-  
-   // Пересчёт весов при запуске, если включено
    if(Inp_UseCorrelationWeights)
-   {
-      InitCorrelationWeights(Inp_WorkTF, Inp_BarsForCorrelation);
-   }
+      InitCorrelationWeights(Inp_WorkTF,Inp_BarsForCorrelation);
    else
-   {
-      gWeightRSI = Inp_Weight_RSI;
-      gWeightADX = Inp_Weight_ADX;
-      gWeightATR = Inp_Weight_ATR;
-      gWeightOBV = Inp_Weight_OBV;
-      gWeightSTDDEV = Inp_Weight_STDDEV;
-   }
-  
-   // Защита от идиота (если кто-то поставит нули)
-   if(gWeightRSI <= 0) gWeightRSI = 0.01;
-   if(gWeightADX <= 0) gWeightADX = 0.01;
-   if(gWeightATR <= 0) gWeightATR = 0.01;
-   if(gWeightOBV <= 0) gWeightOBV = 0.01;
-   if(gWeightSTDDEV <= 0) gWeightSTDDEV = 0.01;
-  
-   // --- Equity Stop: старт с текущего баланса ---
+     {
+      gWeightRSI=Inp_Weight_RSI; gWeightADX=Inp_Weight_ADX;
+      gWeightATR=Inp_Weight_ATR; gWeightOBV=Inp_Weight_OBV;
+      gWeightSTDDEV=Inp_Weight_STDDEV;
+     }
+
+   InitBaseWeights();
    g_DailyStartBalance = AccountInfoDouble(ACCOUNT_BALANCE);
-   g_LastDayChecked = TimeCurrent() / 86400 * 86400;  // Начало текущего дня
-   g_TradingStoppedToday = false;
-   g_StopTradingUntil = 0;
-  
-   PrintFormat("Initial Daily Balance (yesterday's close): %.2f | Equity Stop: %.1f%% → %.2f", 
-               g_DailyStartBalance, Inp_EquityStopPercent, 
-               g_DailyStartBalance * (1.0 - Inp_EquityStopPercent/100.0));
-  
-   // пробуем определить, идут ли живые тики
-   datetime t0 = TimeCurrent();
-   Sleep(1500);
-   if(TimeCurrent() == t0)
-   {
-      EventSetTimer(1);
-      gUseTimer = true;
-      Print("🕒 No live ticks detected → TIMER mode enabled");
-   }
-   else
-   {
-      Print("📡 Live ticks detected → LIVE mode");
-   }
-   TradeInit(); // Инициализируем торговый модуль
-   Print("✅ ConsensusEA initialized. WorkTF=", (int)Inp_WorkTF,
-         " SeniorTF=", (int)Inp_SeniorTF,
-         " Method=", (int)Inp_Method,
-         " WeightUpdate=", (int)Inp_WeightUpdate);
+   g_LastDayChecked = TimeCurrent()/86400*86400;
+
+   datetime t0=TimeCurrent(); Sleep(1500);
+   if(TimeCurrent()==t0) { EventSetTimer(1); gUseTimer=true; Print("TIMER mode"); }
+   else Print("LIVE ticks mode");
+
+   TradeInit();
+   Print("Sydney Monday GA active — next run: Monday 11:00–12:00 AEDT");
    return(INIT_SUCCEEDED);
-}
+  }
 
-//---------------------------------------------------------------
-// Рассчитать время до Sydney open (для cooldown=0)
-//---------------------------------------------------------------
-datetime GetNextSydneyOpen()
-{
+//+------------------------------------------------------------------+
+//| СИДНЕЙСКИЙ ПОНЕДЕЛЬНИК 11:00–11:59 AEDT                         |
+//+------------------------------------------------------------------+
+bool ShouldRunSydneyMondayGA()
+  {
    datetime now = TimeCurrent();
-   MqlDateTime dt;
-   TimeToStruct(now, dt);
-   int dayOfWeek = dt.day_of_week;  // 0=Sunday, 1=Monday, ..., 6=Saturday
-  
-   datetime nextOpen;
-  
-   if(dayOfWeek == 0) // Воскресенье — ждём 22:00 UTC (Sydney open)
-   {
-      nextOpen = now / 86400 * 86400 + 79200;  // 22:00 = 22*3600
-      if(now >= nextOpen) nextOpen += 86400;  // Если уже прошло, следующий день
-   }
-   else if(dayOfWeek == 6) // Суббота — ждём воскресенье 22:00
-   {
-      nextOpen = now / 86400 * 86400 + 86400 + 79200;
-   }
-   else // Будни — следующий день 00:00 (Sydney уже open, но для consistency ждём следующего дня)
-   {
-      nextOpen = now / 86400 * 86400 + 86400;  // Следующий день 00:00
-   }
-   PrintFormat("Next Sydney Open: %s", TimeToString(nextOpen, TIME_DATE|TIME_MINUTES));
-   return nextOpen;
-}
+   datetime sydneyNow = now + 10*3600;               // UTC → AEDT (GMT+11, без DST — ок для 2025)
+   MqlDateTime dt; TimeToStruct(sydneyNow, dt);
 
-//---------------------------------------------------------------
-// Обновить daily balance на новый день
-//---------------------------------------------------------------
+   // Понедельник + 11:00–11:59 AEDT
+   if(dt.day_of_week != 1 || dt.hour != 11) return false;
+
+   // Прошло ≥ 6.5 дней с прошлого запуска
+   if(now - g_LastGA_Run < 6.5*24*3600) return false;
+
+   // Данных за 14 дней хватает?
+   datetime twoWeeksAgo = now - 14*24*3600;
+   MqlRates rates[];
+   int copied = CopyRates(_Symbol, Inp_WorkTF, twoWeeksAgo, now, rates);
+   if(copied < 1000) // чуть жёстче — 1000 баров M5 ≈ 3.5 торговых дня
+     {
+      PrintFormat("Sydney GA: only %d bars → waiting for more data", copied);
+      return false;
+     }
+
+   PrintFormat("=== SYDNEY MONDAY GA @ %s AEDT ===", TimeToString(sydneyNow, TIME_DATE|TIME_MINUTES));
+   return true;
+  }
+
+//+------------------------------------------------------------------+
+//| Sydney open для Equity Stop                                      |
+//+------------------------------------------------------------------+
+datetime GetNextSydneyOpen()
+  {
+   datetime now=TimeCurrent();
+   MqlDateTime dt; TimeToStruct(now,dt);
+   datetime next;
+   if(dt.day_of_week==0)      next = now/86400*86400 + 79200;  // Sun 22:00 UTC
+   else if(dt.day_of_week==6) next = now/86400*86400 + 86400 + 79200;
+   else                       next = now/86400*86400 + 86400;
+   if(now>=next) next+=86400;
+   return next;
+  }
+
+//+------------------------------------------------------------------+
+//| Daily balance + Equity Stop + Adaptive Threshold                 |
+//+------------------------------------------------------------------+
 void UpdateDailyBalance()
-{
-   datetime currentDay = TimeCurrent() / 86400 * 86400;  // Начало текущего дня
-   if(currentDay > g_LastDayChecked)
-   {
-      g_DailyStartBalance = AccountInfoDouble(ACCOUNT_BALANCE);
-      g_LastDayChecked = currentDay;
-      g_TradingStoppedToday = false;
-      g_StopTradingUntil = 0;
-      PrintFormat("New Day! Reset Equity Base to Yesterday's Close: %.2f", g_DailyStartBalance);
-   }
-}
+  {
+   datetime curDay=TimeCurrent()/86400*86400;
+   if(curDay>g_LastDayChecked)
+     {
+      g_DailyStartBalance=AccountInfoDouble(ACCOUNT_BALANCE);
+      g_LastDayChecked=curDay;
+      g_TradingStoppedToday=false;
+      g_StopTradingUntil=0;
+      PrintFormat("New day → Equity base reset: %.2f",g_DailyStartBalance);
+     }
+  }
 
 //---------------------------------------------------------------
 // Проверка Equity Stop
@@ -288,101 +257,82 @@ double GetAdaptiveThreshold()
    return Inp_Threshold_Base;
 }
 
-//---------------------------------------------------------------
-// Основной цикл анализа
-//---------------------------------------------------------------
+//+------------------------------------------------------------------+
+//| OnTick — только GA-блок                                          |
+//+------------------------------------------------------------------+
 void OnTick()
-{
-   UpdateDailyBalance();  // Обновляем базу от вчерашнего закрытия
-  
+  {
+   UpdateDailyBalance();
    if(!IsTradingAllowed()) return;
    if(CheckEquityStop()) return;
-  
-   // 1. Анализ индикаторов по рабочему и старшему ТФ
-   bool okWork = ConsensusAnalyze(_Symbol, Inp_WorkTF, gWorkVotes);
-   bool okSenior = ConsensusAnalyze(_Symbol, Inp_SeniorTF, gSeniorVotes);
-   if(!okWork || !okSenior)
-      return;
-   // 2. Переносим голоса и считаем консенсус
-   gWorkVotes.ToConsensusSet(gWorkSet);
-   ConsensusCompute(gWorkSet);
-  
-   gSeniorVotes.ToConsensusSet(gSeniorSet);
-   ConsensusCompute(gSeniorSet);
-  
-   // 3. Комбинируем сигналы по выбранной методике с адаптивным порогом
-   double adaptiveThreshold = GetAdaptiveThreshold();
-   ENUM_TradeSignal signal = CombineSignals(
-      gWorkSet,
-      gSeniorSet,
-      Inp_Method,
-      adaptiveThreshold,
-      Inp_AvoidTrendEnd
-   );
-   gLastSignal = signal;
-   // 4. Управление торговлей
+
+   bool okW=ConsensusAnalyze(_Symbol,Inp_WorkTF,gWorkVotes);
+   bool okS=ConsensusAnalyze(_Symbol,Inp_SeniorTF,gSeniorVotes);
+   if(!okW || !okS) return;
+
+   // === СИДНЕЙСКИЙ ПОНЕДЕЛЬНИК 11:00 AEDT ===
+   if(Inp_WeightUpdate!=WEIGHT_UPDATE_NONE && ShouldRunSydneyMondayGA())
+     {
+      Print("=== GENETIC OPTIMIZATION STARTED ===");
+      datetime end = TimeCurrent();
+      datetime start = end - 14*86400;
+      MqlRates rates[];
+      int copied = CopyRates(_Symbol, Inp_WorkTF, start, end, rates);
+      PrintFormat("Data window: %s → %s (%d bars)", 
+                  TimeToString(start,TIME_DATE|TIME_MINUTES),
+                  TimeToString(end,TIME_DATE|TIME_MINUTES), copied);
+
+      UpdateWeights(Inp_WeightUpdate,Inp_SeniorTF);
+
+      if(GetRecentDD()>MAX_DD_FOR_ROLLBACK)
+        {
+         Print("ROLLBACK — DD too high! Restoring base weights");
+         RestoreBaseWeights();
+        }
+
+      g_LastGA_Run = TimeCurrent();
+      Print("=== GENETIC OPTIMIZATION FINISHED ===\n");
+     }
+
+   // === Остальной код без изменений (сигналы, трейд, панель) ===
+   gWorkVotes.ToConsensusSet(gWorkSet);   ConsensusCompute(gWorkSet);
+   gSeniorVotes.ToConsensusSet(gSeniorSet); ConsensusCompute(gSeniorSet);
+
+   double thr=GetAdaptiveThreshold();
+   ENUM_TradeSignal signal=CombineSignals(gWorkSet,gSeniorSet,Inp_Method,thr,Inp_AvoidTrendEnd);
+   gLastSignal=signal;
+
    TradeManage(signal);
-   // 5. Обновляем панель — только при изменении сигнала или раз в 2 секунды
-   datetime now = TimeCurrent();
-   bool needUpdate = false;
-  
-   // обновляем, если сменился сигнал или прошло >= 2 сек
-   if(signal != prevPanelSignal || (now - lastPanelUpdate) >= 2)
-   {
-      needUpdate = true;
-      prevPanelSignal = signal;
-      lastPanelUpdate = now;
-   }
-  
-   if(needUpdate)
-   {
-      PanelUpdate(gWorkSet, gSeniorSet);
-      ChartRedraw(); // безопасно форсирует отрисовку
-   }
-   // 6. Вывод в лог — только при изменении сигнала и не чаще чем раз в 5 секунд
-  
-   string sigText = "NONE";
-   if(signal == SIGNAL_BUY) sigText = "BUY";
-   if(signal == SIGNAL_SELL) sigText = "SELL";
-   if(signal == SIGNAL_FLAT) sigText = "FLAT";
-  
-   // выводим, если сигнал изменился или прошло >=5 секунд
-   if(signal != prevSignal || TimeCurrent() - lastPrintTime >= 5)
-   {
-      PrintFormat("Signal=%s | W.cons=%.2f (%.2f) | S.cons=%.2f (%.2f) | TFs: %d/%d",
-         sigText,
-         gWorkSet.consensus,  gWorkSet.confidence,
-         gSeniorSet.consensus,gSeniorSet.confidence,
-         (int)Inp_WorkTF, (int)Inp_SeniorTF);
-  
-      prevSignal    = signal;
-      lastPrintTime = TimeCurrent();
-   }
-  
-}
 
-//---------------------------------------------------------------
-// Таймер — используется только в оффлайн-режиме
-//---------------------------------------------------------------
-void OnTimer()
-{
-   if(gUseTimer)
-      OnTick();
-}
+   datetime now=TimeCurrent();
+   if(signal!=prevPanelSignal || (now-lastPanelUpdate)>=2)
+     {
+      PanelUpdate(gWorkSet,gSeniorSet);
+      ChartRedraw();
+      prevPanelSignal=signal;
+      lastPanelUpdate=now;
+     }
 
-//---------------------------------------------------------------
-// Деинициализация
-//---------------------------------------------------------------
+   string txt=(signal==SIGNAL_BUY?"BUY":(signal==SIGNAL_SELL?"SELL":"NONE"));
+   if(signal!=prevSignal || now-lastPrintTime>=5)
+     {
+      PrintFormat("Signal=%s | W:%.2f S:%.2f | Thr=%.2f",txt,gWorkSet.consensus,gSeniorSet.consensus,thr);
+      prevSignal=signal;
+      lastPrintTime=now;
+     }
+  }
+
+//+------------------------------------------------------------------+
+//| Timer / Deinit                                                   |
+//+------------------------------------------------------------------+
+void OnTimer() { if(gUseTimer) OnTick(); }
+
 void OnDeinit(const int reason)
-{
-   Print("OnDeinit: cleaning up...");
-   if(gUseTimer)
-   {
-      EventKillTimer();
-      gUseTimer = false;
-   }
-   TradeDeinit(); // Очищаем торговый модуль, если нужно
+  {
+   if(gUseTimer) EventKillTimer();
+   TradeDeinit();
    PanelDelete();
    ChartRedraw();
-   Print("✅ ConsensusEA deinitialized, panel removed");
-}
+   Print("ConsensusEA v3.64 stopped — see you next Sydney Monday 11:00 AEDT");
+  }
+//+------------------------------------------------------------------+
