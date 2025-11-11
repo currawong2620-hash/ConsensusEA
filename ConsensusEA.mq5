@@ -1,10 +1,10 @@
 //+------------------------------------------------------------------+
 //|                                                      ConsensusEA.mq5|
 //|                        Copyright 2025, Consensus Trading Team   |
-//|                                v3.64 — Sydney Monday 11:00 AEDT |
+//|                                v3.54 — Sydney Monday 11:00 AEDT |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "3.64"
+#property version   "3.54"
 #property copyright "Consensus Trading Team — Sydney Edition"
 
 //---------------------------------------------------------------
@@ -335,4 +335,5 @@ void OnDeinit(const int reason)
    ChartRedraw();
    Print("ConsensusEA v3.64 stopped — see you next Sydney Monday 11:00 AEDT");
   }
+
 //+------------------------------------------------------------------+
